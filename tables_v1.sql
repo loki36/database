@@ -442,3 +442,77 @@ USAGEID INTEGER NOT NULL PRIMARY KEY
 );
 CREATE INDEX IDX_USAGE_DATE ON USAGE_V1 (USAGEDATE);
 
+-- Describe FIELD_V1
+CREATE  TABLE  IF NOT EXISTS FIELD_V1 (
+  FIELDID INTEGER PRIMARY KEY  AUTOINCREMENT  NOT NULL  UNIQUE ,
+  FIELDNAME VARCHAR NOT NULL UNIQUE
+);
+
+INSERT INTO FIELD_V1 (FIELDNAME) VALUES ('notes');
+
+-- Describe CONDITION_V1
+CREATE  TABLE  IF NOT EXISTS CONDITION_V1 (
+  CONDITIONID INTEGER PRIMARY KEY  AUTOINCREMENT  NOT NULL  UNIQUE ,
+  CONDITIONNAME VARCHAR NOT NULL UNIQUE,
+  SQLCODE VARCHAR NOT NULL
+);
+
+INSERT INTO CONDITION_V1 (CONDITIONNAME,SQLCODE) VALUES ('like','like');
+
+-- Describe ASSIGNMENT_V1
+CREATE  TABLE  IF NOT EXISTS ASSIGNMENT_V1 (
+  ASSIGNMENTID INTEGER PRIMARY KEY  AUTOINCREMENT  NOT NULL  UNIQUE ,
+  ASSIGNMENTNAME VARCHAR UNIQUE,
+  FIELDID INTEGER NOT NULL,
+  CONDITIONID INTEGER NOT NULL,
+  CRITERION VARCHAR,
+  PAYEEID INTEGER NOT NULL DEFAULT (-1),
+  PAYEE_OVERWRITE_FLAG INTEGER NOT NULL DEFAULT (0),
+  SUBCATEGID INTEGER NOT NULL DEFAULT (-1), 
+  SUBCATEG_OVERWRITE_FLAG INTEGER NOT NULL DEFAULT (0), 
+  FOREIGN KEY(PAYEEID) REFERENCES PAYEE_V1(PAYEEID),
+  FOREIGN KEY(SUBCATEGID) REFERENCES SUBCATEGORY_V1(SUBCATEGID),
+  FOREIGN KEY(FIELDID) REFERENCES FIELD_V1(FIELDID),
+  FOREIGN KEY(CONDITIONID) REFERENCES CONDITION_V1(CONDITIONID)
+);
+
+-- Describe V_ASSIGNMENT_SQL (view to generat sql code for automatic assignment)
+CREATE VIEW V_ASSIGNMENT_SQL
+AS
+SELECT
+  assignmentid,
+  assignmentname,
+  'PAYEE' as TYPEFIELD,
+  'UPDATE  checkingaccount_v1 ' ||
+  'SET payeeid=''' || payeeid || ''' ' ||
+  'WHERE ' || fieldname || ' ' || SQLCODE || ' ''' || criterion || '''' ||
+  CASE
+    WHEN PAYEE_OVERWRITE_FLAG = 1 THEN '' 
+    ELSE ' AND payeeid < 1'
+  END as SQLUPDATE
+FROM
+  assignment_v1 a 
+  JOIN field_v1 f ON a.fieldid = f.fieldid
+  JOIN condition_v1 c ON a.conditionid = c.conditionid
+WHERE
+  payeeid > 0
+UNION
+SELECT
+  assignmentid,
+  assignmentname,
+  'CATEGORY' as TYPEFIELD,
+  'UPDATE  checkingaccount_v1 ' ||
+  'SET subcategid=''' || a.subcategid || ''' , categid=''' || s.categid || ''' ' ||
+  'WHERE ' || fieldname || ' ' || SQLCODE || ' ''' || criterion || '''' ||
+  CASE
+    WHEN SUBCATEG_OVERWRITE_FLAG = 1 THEN '' 
+    ELSE ' AND subcategid < 1'
+  END
+FROM
+  assignment_v1 a 
+  JOIN field_v1 f ON a.fieldid = f.fieldid
+  JOIN condition_v1 c ON a.conditionid = c.conditionid
+  JOIN subcategory_v1 s ON a.subcategid = s.subcategid
+WHERE
+  a.subcategid > 0
+
